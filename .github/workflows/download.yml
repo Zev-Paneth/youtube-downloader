@@ -1,57 +1,89 @@
-  name: YouTube Downloader
+name: YouTube Downloader
 
-  on:
-    workflow_dispatch:
-      inputs:
-        video_url:
-          description: 'YouTube URL'
-          required: true
-          default: 'https://youtu.be/iptOyzvegSk'
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube URL'
+        required: true
+        default: 'https://youtu.be/iptOyzvegSk'
 
-  jobs:
-    download:
-      runs-on: ubuntu-latest
+jobs:
+  download:
+    runs-on: ubuntu-latest
 
-      steps:
-      - name: Setup Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.9'
+    steps:
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
 
-      - name: Install yt-dlp
-        run: pip install yt-dlp
+    - name: Install yt-dlp
+      run: pip install yt-dlp
 
-      - name: Download Video
-        run: |
-          yt-dlp -f 'best[height<=720]' -o 'video.mp4' '${{ github.event.inputs.video_url }}'
-          ls -lh video.mp4
+    - name: Download Video
+      run: |
+        yt-dlp -f 'best[height<=720]' -o 'video.mp4' '${{ github.event.inputs.video_url }}'
+        ls -lh video.mp4
 
-      - name: Send Email
-        run: |
-          python3 << 'EOF'
-          import smtplib
-          from email.mime.text import MIMEText
-          from email.mime.multipart import MIMEMultipart
-          import os
+    - name: Send Email
+      run: |
+        python3 << 'EOF'
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.base import MIMEBase
+        from email import encoders
+        import os
 
-          msg = MIMEMultipart()
-          msg['From'] = 'zevpaneth@gmail.com'
-          msg['To'] = 'z0504167424@gmail.com'
-          msg['Subject'] = 'Video Downloaded'
+        # Setup email
+        msg = MIMEMultipart()
+        msg['From'] = 'zevpaneth@gmail.com'
+        msg['To'] = 'z0504167424@gmail.com'
+        msg['Subject'] = 'Video Downloaded from GitHub Actions'
 
-          size = os.path.getsize('video.mp4') / (1024*1024)
-          msg.attach(MIMEText(f'Video ready! Size: {size:.1f} MB\nURL: ${{ github.event.inputs.video_url }}', 'plain'))
+        # Get file size
+        if os.path.exists('video.mp4'):
+            size = os.path.getsize('video.mp4') / (1024*1024)
 
-          server = smtplib.SMTP('smtp.gmail.com', 587)
-          server.starttls()
-          server.login('zevpaneth@gmail.com', 'wflk bcee vbra iyjz')
-          server.send_message(msg)
-          server.quit()
-          print(f'Email sent! Video size: {size:.1f} MB')
-          EOF
+            # Add body
+            body = f'''
+            Your video has been downloaded!
 
-      - name: Upload Video
-        uses: actions/upload-artifact@v2
-        with:
-          name: video
-          path: video.mp4
+            Size: {size:.1f} MB
+            URL: ${{ github.event.inputs.video_url }}
+
+            Download from GitHub Actions artifacts or wait for attachment.
+            '''
+            msg.attach(MIMEText(body, 'plain'))
+
+            # Attach if small enough
+            if size < 25:
+                with open('video.mp4', 'rb') as f:
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', 'attachment; filename=video.mp4')
+                    msg.attach(part)
+                print(f'Attaching video ({size:.1f} MB)')
+            else:
+                print(f'Video too large ({size:.1f} MB), sending link only')
+
+        # Send email
+        try:
+            server = smtplib.SMTP('smtp.gmail.com', 587)
+            server.starttls()
+            server.login('zevpaneth@gmail.com', 'wflk bcee vbra iyjz')
+            server.send_message(msg)
+            server.quit()
+            print('✅ Email sent successfully!')
+        except Exception as e:
+            print(f'❌ Email failed: {e}')
+        EOF
+
+    - name: Upload Video as Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: downloaded-video
+        path: video.mp4
+        retention-days: 1
