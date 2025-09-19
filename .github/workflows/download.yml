@@ -1,0 +1,57 @@
+  name: YouTube Downloader
+
+  on:
+    workflow_dispatch:
+      inputs:
+        video_url:
+          description: 'YouTube URL'
+          required: true
+          default: 'https://youtu.be/iptOyzvegSk'
+
+  jobs:
+    download:
+      runs-on: ubuntu-latest
+
+      steps:
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+
+      - name: Install yt-dlp
+        run: pip install yt-dlp
+
+      - name: Download Video
+        run: |
+          yt-dlp -f 'best[height<=720]' -o 'video.mp4' '${{ github.event.inputs.video_url }}'
+          ls -lh video.mp4
+
+      - name: Send Email
+        run: |
+          python3 << 'EOF'
+          import smtplib
+          from email.mime.text import MIMEText
+          from email.mime.multipart import MIMEMultipart
+          import os
+
+          msg = MIMEMultipart()
+          msg['From'] = 'zevpaneth@gmail.com'
+          msg['To'] = 'z0504167424@gmail.com'
+          msg['Subject'] = 'Video Downloaded'
+
+          size = os.path.getsize('video.mp4') / (1024*1024)
+          msg.attach(MIMEText(f'Video ready! Size: {size:.1f} MB\nURL: ${{ github.event.inputs.video_url }}', 'plain'))
+
+          server = smtplib.SMTP('smtp.gmail.com', 587)
+          server.starttls()
+          server.login('zevpaneth@gmail.com', 'wflk bcee vbra iyjz')
+          server.send_message(msg)
+          server.quit()
+          print(f'Email sent! Video size: {size:.1f} MB')
+          EOF
+
+      - name: Upload Video
+        uses: actions/upload-artifact@v2
+        with:
+          name: video
+          path: video.mp4
